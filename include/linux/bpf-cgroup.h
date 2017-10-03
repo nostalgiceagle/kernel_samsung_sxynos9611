@@ -37,6 +37,13 @@ int __cgroup_bpf_update(struct cgroup *cgrp, struct cgroup *parent,
 int cgroup_bpf_update(struct cgroup *cgrp, struct bpf_prog *prog,
 		      enum bpf_attach_type type, bool overridable);
 
+int __cgroup_bpf_query(struct cgroup *cgrp, const union bpf_attr *attr,
+		       union bpf_attr __user *uattr);
+
+/* Wrapper for __cgroup_bpf_*() protected by cgroup_mutex */
+int cgroup_bpf_query(struct cgroup *cgrp, const union bpf_attr *attr,
+		     union bpf_attr __user *uattr);
+
 int __cgroup_bpf_run_filter_skb(struct sock *sk,
 				struct sk_buff *skb,
 				enum bpf_attach_type type);
