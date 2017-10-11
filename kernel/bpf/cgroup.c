@@ -87,9 +87,12 @@ int __cgroup_bpf_update(struct cgroup *cgrp, struct cgroup *parent,
 			struct bpf_prog *prog, enum bpf_attach_type type,
 			bool new_overridable)
 {
-	struct bpf_prog *old_prog, *effective = NULL;
-	struct cgroup_subsys_state *pos;
-	bool overridable = true;
+	struct list_head *progs = &cgrp->bpf.progs[type];
+	struct bpf_prog *old_prog = NULL;
+	struct cgroup_subsys_state *css;
+	struct bpf_prog_list *pl;
+	bool pl_was_allocated;
+	int err;
 
 	if (parent) {
 		overridable = !parent->bpf.disallow_override[type];
@@ -142,8 +145,7 @@ int __cgroup_bpf_update(struct cgroup *cgrp, struct cgroup *parent,
 		}
 	}
 
-	if (prog)
-		static_branch_inc(&cgroup_bpf_enabled_key);
+	cgrp->bpf.flags[type] = flags;
 
 	if (old_prog) {
 		bpf_prog_put(old_prog);
