@@ -69,25 +69,9 @@ static inline int timeval_compare(const struct timeval *lhs, const struct timeva
  * An encoding of midnight at the end of the day as 24:00:00 - ie. midnight
  * tomorrow - (allowable under ISO 8601) is supported.
  */
-static inline time64_t mktime64(const unsigned int year0, const unsigned int mon0,
-		const unsigned int day, const unsigned int hour,
-		const unsigned int min, const unsigned int sec)
-{
-	unsigned int mon = mon0, year = year0;
-
-	/* 1..12 -> 11,12,1..10 */
-	if (0 >= (int) (mon -= 2)) {
-		mon += 12;	/* Puts Feb last since it has leap day */
-		year -= 1;
-	}
-
-	return ((((time64_t)
-		  (year/4 - year/100 + year/400 + 367*mon/12 + day) +
-		  year*365 - 719499
-	    )*24 + hour /* now have hours - midnight tomorrow handled here */
-	  )*60 + min /* now have minutes */
-	)*60 + sec; /* finally seconds */
-}
+extern time64_t mktime64(const unsigned int year, const unsigned int mon,
+			const unsigned int day, const unsigned int hour,
+			const unsigned int min, const unsigned int sec);
 
 /**
  * Deprecated. Use mktime64().
@@ -134,29 +118,6 @@ static inline void set_normalized_timespec(struct timespec *ts, time_t sec, s64 
 	ts->tv_sec = sec;
 	ts->tv_nsec = nsec;
 }
-
-/*
- * timespec_add_safe assumes both values are positive and checks
- * for overflow. It will return TIME_T_MAX if the reutrn would be
- * smaller then either of the arguments.
- *
- * Add two timespec values and do a safety check for overflow.
- * It's assumed that both values are valid (>= 0)
- */
-static inline struct timespec timespec_add_safe(const struct timespec lhs,
-				  const struct timespec rhs)
-{
-	struct timespec res;
-
-	set_normalized_timespec(&res, lhs.tv_sec + rhs.tv_sec,
-				lhs.tv_nsec + rhs.tv_nsec);
-
-	if (res.tv_sec < lhs.tv_sec || res.tv_sec < rhs.tv_sec)
-		res.tv_sec = TIME_T_MAX;
-
-	return res;
-}
-
 
 static inline struct timespec timespec_add(struct timespec lhs,
 						struct timespec rhs)
