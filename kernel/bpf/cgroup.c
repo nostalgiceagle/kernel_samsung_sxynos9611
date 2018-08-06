@@ -164,6 +164,47 @@ void cgroup_bpf_inherit(struct cgroup *cgrp, struct cgroup *parent)
 	}
 }
 
+static int update_effective_progs(struct cgroup *cgrp,
+				  enum bpf_attach_type type)
+{
+	struct cgroup_subsys_state *css;
+	int err;
+
+	/* allocate and recompute effective prog arrays */
+	css_for_each_descendant_pre(css, &cgrp->self) {
+		struct cgroup *desc = container_of(css, struct cgroup, self);
+
+		err = compute_effective_progs(desc, type, &desc->bpf.inactive);
+		if (err)
+			goto cleanup;
+	}
+
+	/* all allocations were successful. Activate all prog arrays */
+	css_for_each_descendant_pre(css, &cgrp->self) {
+		struct cgroup *desc = container_of(css, struct cgroup, self);
+
+		activate_effective_progs(desc, type, desc->bpf.inactive);
+		desc->bpf.inactive = NULL;
+	}
+
+	return 0;
+
+cleanup:
+	/* oom while computing effective. Free all computed effective arrays
+	 * since they were not activated
+	 */
+	css_for_each_descendant_pre(css, &cgrp->self) {
+		struct cgroup *desc = container_of(css, struct cgroup, self);
+
+		bpf_prog_array_free(desc->bpf.inactive);
+		desc->bpf.inactive = NULL;
+	}
+
+	return err;
+}
+
+#define BPF_CGROUP_MAX_PROGS 64
+
 /**
  * __cgroup_bpf_update() - Update the pinned program of a cgroup, and
  *                         propagate the change to descendants
@@ -198,7 +239,6 @@ int __cgroup_bpf_update(struct cgroup *cgrp, struct cgroup *parent,
 	struct list_head *progs = &cgrp->bpf.progs[type];
 	struct bpf_prog *old_prog = NULL;
 	struct bpf_cgroup_storage *storage, *old_storage = NULL;
-	struct cgroup_subsys_state *css;
 	struct bpf_prog_list *pl;
 	bool pl_was_allocated;
 	int err;
@@ -266,22 +306,9 @@ int __cgroup_bpf_update(struct cgroup *cgrp, struct cgroup *parent,
 
 	cgrp->bpf.flags[type] = flags;
 
-	/* allocate and recompute effective prog arrays */
-	css_for_each_descendant_pre(css, &cgrp->self) {
-		struct cgroup *desc = container_of(css, struct cgroup, self);
-
-		err = compute_effective_progs(desc, type, &desc->bpf.inactive);
-		if (err)
-			goto cleanup;
-	}
-
-	/* all allocations were successful. Activate all prog arrays */
-	css_for_each_descendant_pre(css, &cgrp->self) {
-		struct cgroup *desc = container_of(css, struct cgroup, self);
-
-		activate_effective_progs(desc, type, desc->bpf.inactive);
-		desc->bpf.inactive = NULL;
-	}
+	err = update_effective_progs(cgrp, type);
+	if (err)
+		goto cleanup;
 
 	static_branch_inc(&cgroup_bpf_enabled_key);
 	if (old_storage)
@@ -294,16 +321,6 @@ int __cgroup_bpf_update(struct cgroup *cgrp, struct cgroup *parent,
 	return 0;
 
 cleanup:
-	/* oom while computing effective. Free all computed effective arrays
-	 * since they were not activated
-	 */
-	css_for_each_descendant_pre(css, &cgrp->self) {
-		struct cgroup *desc = container_of(css, struct cgroup, self);
-
-		bpf_prog_array_free(desc->bpf.inactive);
-		desc->bpf.inactive = NULL;
-	}
-
 	/* and cleanup the prog list */
 	pl->prog = old_prog;
 	bpf_cgroup_storage_free(pl->storage);
@@ -331,7 +348,6 @@ int __cgroup_bpf_detach(struct cgroup *cgrp, struct bpf_prog *prog,
 	struct list_head *progs = &cgrp->bpf.progs[type];
 	u32 flags = cgrp->bpf.flags[type];
 	struct bpf_prog *old_prog = NULL;
-	struct cgroup_subsys_state *css;
 	struct bpf_prog_list *pl;
 	int err;
 
@@ -370,22 +386,9 @@ int __cgroup_bpf_detach(struct cgroup *cgrp, struct bpf_prog *prog,
 		pl->prog = NULL;
 	}
 
-	/* allocate and recompute effective prog arrays */
-	css_for_each_descendant_pre(css, &cgrp->self) {
-		struct cgroup *desc = container_of(css, struct cgroup, self);
-
-		err = compute_effective_progs(desc, type, &desc->bpf.inactive);
-		if (err)
-			goto cleanup;
-	}
-
-	/* all allocations were successful. Activate all prog arrays */
-	css_for_each_descendant_pre(css, &cgrp->self) {
-		struct cgroup *desc = container_of(css, struct cgroup, self);
-
-		activate_effective_progs(desc, type, desc->bpf.inactive);
-		desc->bpf.inactive = NULL;
-	}
+	err = update_effective_progs(cgrp, type);
+	if (err)
+		goto cleanup;
 
 	/* now can actually delete it from this cgroup list */
 	list_del(&pl->node);
@@ -401,16 +404,6 @@ int __cgroup_bpf_detach(struct cgroup *cgrp, struct bpf_prog *prog,
 	return 0;
 
 cleanup:
-	/* oom while computing effective. Free all computed effective arrays
-	 * since they were not activated
-	 */
-	css_for_each_descendant_pre(css, &cgrp->self) {
-		struct cgroup *desc = container_of(css, struct cgroup, self);
-
-		bpf_prog_array_free(desc->bpf.inactive);
-		desc->bpf.inactive = NULL;
-	}
-
 	/* and restore back old_prog */
 	pl->prog = old_prog;
 	return err;
