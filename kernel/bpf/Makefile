@@ -29,3 +29,7 @@ obj-$(CONFIG_CGROUP_BPF) += cgroup.o
 # BPF interpreter can cause linker errors when spread incorrectly over
 # partitions. Disable LTO for BPF for now
 CFLAGS_core.o = $(DISABLE_LTO)
+
+ifeq ($(CONFIG_INET),y)
+obj-$(CONFIG_BPF_SYSCALL) += reuseport_array.o
+endif
