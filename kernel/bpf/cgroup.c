@@ -558,7 +558,9 @@ int __cgroup_bpf_run_filter_skb(struct sock *sk,
 				struct sk_buff *skb,
 				enum bpf_attach_type type)
 {
-	struct bpf_prog *prog;
+	unsigned int offset = skb->data - skb_network_header(skb);
+	struct sock *save_sk;
+	void *saved_data_end;
 	struct cgroup *cgrp;
 	int ret = 0;
 
@@ -570,26 +572,19 @@ int __cgroup_bpf_run_filter_skb(struct sock *sk,
 		return 0;
 
 	cgrp = sock_cgroup_ptr(&sk->sk_cgrp_data);
+	save_sk = skb->sk;
+	skb->sk = sk;
+	__skb_push(skb, offset);
 
-	rcu_read_lock();
+	/* compute pointers for the bpf prog */
+	bpf_compute_and_save_data_end(skb, &saved_data_end);
 
-	prog = rcu_dereference(cgrp->bpf.effective[type]);
-	if (prog) {
-		unsigned int offset = skb->data - skb_network_header(skb);
-		struct sock *save_sk = skb->sk;
-
-		skb->sk = sk;
-		__skb_push(skb, offset);
-		ret = bpf_prog_run_save_cb(prog, skb) == 1 ? 0 : -EPERM;
-		__skb_pull(skb, offset);
-		skb->sk = save_sk;
-	}
-
-	rcu_read_unlock();
-
-	if (ret)
-		DROPDUMP_QPCAP_SKB(skb, NET_DROPDUMP_OPT_IP_BPF);
-	return ret;
+	ret = BPF_PROG_RUN_ARRAY(cgrp->bpf.effective[type], skb,
+				 bpf_prog_run_save_cb);
+	bpf_restore_data_end(skb, saved_data_end);
+	__skb_pull(skb, offset);
+	skb->sk = save_sk;
+	return ret == 1 ? 0 : -EPERM;
 }
 EXPORT_SYMBOL(__cgroup_bpf_run_filter_skb);
 
