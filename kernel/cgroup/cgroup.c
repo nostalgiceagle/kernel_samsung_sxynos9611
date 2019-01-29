@@ -6057,7 +6057,17 @@ int cgroup_bpf_update(struct cgroup *cgrp, struct bpf_prog *prog,
 	int ret;
 
 	mutex_lock(&cgroup_mutex);
-	ret = __cgroup_bpf_update(cgrp, parent, prog, type, overridable);
+	ret = __cgroup_bpf_attach(cgrp, prog, type, flags);
+	mutex_unlock(&cgroup_mutex);
+	return ret;
+}
+int cgroup_bpf_detach(struct cgroup *cgrp, struct bpf_prog *prog,
+		      enum bpf_attach_type type, u32 flags)
+{
+	int ret;
+
+	mutex_lock(&cgroup_mutex);
+	ret = __cgroup_bpf_detach(cgrp, prog, type);
 	mutex_unlock(&cgroup_mutex);
 	return ret;
 }
