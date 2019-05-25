@@ -6,6 +6,7 @@
 #include <linux/errno.h>
 #include <linux/jump_label.h>
 #include <linux/percpu.h>
+#include <linux/percpu-refcount.h>
 #include <linux/rbtree.h>
 #include <uapi/linux/bpf.h>
 
@@ -64,21 +65,21 @@ struct cgroup_bpf {
 	 * pinned directly to this cgroup, and one for those that are effective
 	 * when this cgroup is accessed.
 	 */
-	struct bpf_prog *prog[MAX_BPF_ATTACH_TYPE];
-	struct bpf_prog __rcu *effective[MAX_BPF_ATTACH_TYPE];
-	bool disallow_override[MAX_BPF_ATTACH_TYPE];
+	struct list_head progs[MAX_BPF_ATTACH_TYPE];
+	u32 flags[MAX_BPF_ATTACH_TYPE];
+
+	/* temp storage for effective prog array used by prog_attach/detach */
+	struct bpf_prog_array __rcu *inactive;
+
+	/* reference counter used to detach bpf programs after cgroup removal */
+	struct percpu_ref refcnt;
+
+	/* cgroup_bpf is released using a work queue */
+	struct work_struct release_work;
 };
 
-void cgroup_bpf_put(struct cgroup *cgrp);
-void cgroup_bpf_inherit(struct cgroup *cgrp, struct cgroup *parent);
-
-int __cgroup_bpf_update(struct cgroup *cgrp, struct cgroup *parent,
-			struct bpf_prog *prog, enum bpf_attach_type type,
-			bool overridable);
-
-/* Wrapper for __cgroup_bpf_update() protected by cgroup_mutex */
-int cgroup_bpf_update(struct cgroup *cgrp, struct bpf_prog *prog,
-		      enum bpf_attach_type type, bool overridable);
+int cgroup_bpf_inherit(struct cgroup *cgrp);
+void cgroup_bpf_offline(struct cgroup *cgrp);
 
 int __cgroup_bpf_attach(struct cgroup *cgrp, struct bpf_prog *prog,
 			enum bpf_attach_type type, u32 flags);
@@ -288,9 +289,9 @@ int cgroup_bpf_prog_query(const union bpf_attr *attr,
 
 struct bpf_prog;
 struct cgroup_bpf {};
-static inline void cgroup_bpf_put(struct cgroup *cgrp) {}
-static inline void cgroup_bpf_inherit(struct cgroup *cgrp,
-				      struct cgroup *parent) {}
+
+static inline int cgroup_bpf_inherit(struct cgroup *cgrp) { return 0; }
+static inline void cgroup_bpf_offline(struct cgroup *cgrp) {}
 
 static inline int cgroup_bpf_prog_attach(const union bpf_attr *attr,
 					 enum bpf_prog_type ptype,
