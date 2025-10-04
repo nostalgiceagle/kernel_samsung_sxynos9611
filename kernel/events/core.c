@@ -8325,7 +8325,7 @@ void perf_trace_run_bpf_submit(void *raw_data, int size, int rctx,
 
 	if (prog) {
 		*(struct pt_regs **)raw_data = regs;
-		if (!trace_call_bpf(prog, raw_data) || hlist_empty(head)) {
+		if (!trace_call_bpf(call, raw_data) || hlist_empty(head)) {
 			perf_swevent_put_recursion_context(rctx);
 			return;
 		}
@@ -8699,6 +8699,7 @@ static void perf_event_free_bpf_prog(struct perf_event *event)
 	if (!perf_event_is_tracing(event)) {
 		perf_event_free_bpf_handler(event);
 		return;
+	}
 
 	prog = event->tp_event->prog;
 	if (prog && event->tp_event->bpf_prog_owner == event) {

@@ -5035,7 +5035,7 @@ static struct cgroup *cgroup_create(struct cgroup *parent)
 	}
 
 	if (parent)
-		cgroup_bpf_inherit(cgrp, parent);
+		cgroup_bpf_inherit(cgrp);
 
 	cgroup_propagate_control(cgrp);
 
@@ -6056,8 +6056,7 @@ void cgroup_sk_free(struct sock_cgroup_data *skcd)
 int cgroup_bpf_update(struct cgroup *cgrp, struct bpf_prog *prog,
 		      enum bpf_attach_type type, bool overridable)
 {
-	struct cgroup *parent = cgroup_parent(cgrp);
-	int ret;
+	int ret, flags;
 
 	mutex_lock(&cgroup_mutex);
 	ret = __cgroup_bpf_attach(cgrp, prog, type, flags);

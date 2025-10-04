@@ -272,6 +272,7 @@ struct trace_event_call {
 #ifdef CONFIG_PERF_EVENTS
 	int				perf_refcount;
 	struct hlist_head __percpu	*perf_events;
+        struct bpf_prog_array __rcu     *prog_array;
 	struct bpf_prog			*prog;
 	struct perf_event		*bpf_prog_owner;
 

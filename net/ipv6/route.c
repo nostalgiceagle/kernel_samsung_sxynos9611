@@ -2725,10 +2725,6 @@ out:
 static int ip6_convert_metrics(struct net *net, struct fib6_info *rt,
 			       struct fib6_config *cfg)
 {
-	bool ecn_ca = false;
-	struct nlattr *nla;
-	int remaining;
-	u32 *mp;
 	int err = 0;
 
 	if (cfg->fc_mx) {
